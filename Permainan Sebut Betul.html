@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Permainan Sebut Betul</title>
+<style>
+:root{--bg:#fff8e7;--card:#fff;--ink:#2b2b2b;--mute:#6b6b6b;--pri:#ff7a00;--ok:#22a45d;--bad:#e5484d;--line:#f0dfb8;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1d1a14;--card:#2a261d;--ink:#f4efe3;--mute:#b5ad98;--line:#4a4332}}
+:root[data-theme="dark"]{--bg:#1d1a14;--card:#2a261d;--ink:#f4efe3;--mute:#b5ad98;--line:#4a4332}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Comic Sans MS","Trebuchet MS",system-ui,sans-serif;min-height:100vh;display:flex;justify-content:center}
+.wrap{width:100%;max-width:520px;padding:20px;text-align:center}
+.card{background:var(--card);border:2px solid var(--line);border-radius:24px;padding:24px;margin-top:12px}
+h1{margin:8px 0;font-size:1.7rem}
+.emoji{font-size:7rem;line-height:1.1}
+.word{font-size:3rem;font-weight:700;letter-spacing:2px;margin:4px 0}
+.syl{color:var(--mute);font-size:1.2rem}
+button{font:inherit;border:0;border-radius:16px;padding:14px 22px;font-size:1.15rem;cursor:pointer;background:var(--pri);color:#fff;margin:6px}
+button.alt{background:transparent;color:var(--ink);border:2px solid var(--line)}
+button.mic{font-size:1.4rem;padding:18px 30px}
+button.rec{background:var(--bad);animation:p 1s infinite}
+button:disabled{opacity:.5}
+@keyframes p{50%{transform:scale(1.07)}}
+input{font:inherit;font-size:1.2rem;padding:12px;border-radius:12px;border:2px solid var(--line);background:var(--bg);color:var(--ink);width:100%;max-width:300px;text-align:center}
+.bar{display:flex;justify-content:space-between;font-weight:700}
+.fb{min-height:3.2em;font-size:1.2rem;margin-top:8px}
+.ok{color:var(--ok)}.bad{color:var(--bad)}
+.hide{display:none}
+.cert{border:8px double var(--pri);padding:24px 14px;border-radius:12px;background:var(--card)}
+.cert h2{font-size:1.9rem;margin:4px 0;color:var(--pri)}
+.name{font-size:2rem;font-weight:700;border-bottom:2px solid var(--line);display:inline-block;padding:0 16px;margin:8px 0}
+@media print{body{background:#fff}.noprint{display:none!important}.cert{color:#000;border-color:#ff7a00}}
+</style>
+</head>
+<body>
+<div class="wrap">
+ <!-- Mula -->
+ <div id="s-start" class="card">
+  <div class="emoji">🐔🐮🐸🐘</div>
+  <h1>Sebut Betul!</h1>
+  <p>Sebut nama haiwan dengan jelas. Jawapan betul dapat markah. Dapatkan sijil di hujung!</p>
+  <input id="nm" placeholder="Taip nama anda" maxlength="30"><br>
+  <button id="go">▶ Mula Main</button>
+  <p id="warn" class="bad"></p>
+ </div>
+ <!-- Main -->
+ <div id="s-play" class="card hide">
+  <div class="bar"><span id="prog"></span><span>⭐ <span id="score">0</span></span></div>
+  <div class="emoji" id="em"></div>
+  <div class="word" id="wd"></div>
+  <div class="syl" id="sy"></div>
+  <button class="alt" id="hear">🔊 Dengar</button>
+  <button class="mic" id="mic">🎤 Cakap</button>
+  <div class="fb" id="fb"></div>
+ </div>
+ <!-- Sijil -->
+ <div id="s-end" class="hide">
+  <div class="cert card">
+   <div style="font-size:3rem">🏆</div>
+   <h2>Sijil Penghargaan</h2>
+   <p>Dengan bangganya dianugerahkan kepada</p>
+   <div class="name" id="cn"></div>
+   <p>kerana berjaya menyebut perkataan <b>ayam, lembu, katak</b> dan <b>gajah</b> dengan betul.</p>
+   <p style="font-size:1.4rem">Markah: <b id="cs"></b> / 40 ⭐</p>
+   <p class="syl" id="cd"></p>
+  </div>
+  <button class="noprint" onclick="window.print()">🖨️ Cetak Sijil</button>
+  <button class="alt noprint" id="again">↺ Main Semula</button>
+ </div>
+</div>
+<script>
+var W=[{w:"ayam",e:"🐔",s:"a - yam"},{w:"lembu",e:"🐮",s:"lem - bu"},{w:"katak",e:"🐸",s:"ka - tak"},{w:"gajah",e:"🐘",s:"ga - jah"}];
+var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+var i=0,score=0,tries=0,rec=null,busy=false,name="";
+var $=function(id){return document.getElementById(id)};
+
+function speak(t,rate,cb){
+  try{
+    speechSynthesis.cancel();
+    var u=new SpeechSynthesisUtterance(t);u.lang="ms-MY";u.rate=rate||0.8;
+    var v=speechSynthesis.getVoices().filter(function(x){return /^ms|^id/i.test(x.lang)})[0];
+    if(v)u.voice=v;
+    if(cb)u.onend=cb;
+    speechSynthesis.speak(u);
+  }catch(e){if(cb)cb()}
+}
+function norm(s){return s.toLowerCase().replace(/[^a-z]/g,"")}
+function lev(a,b){var d=[],x,y;for(x=0;x<=a.length;x++){d[x]=[x]}for(y=1;y<=b.length;y++)d[0][y]=y;
+  for(x=1;x<=a.length;x++)for(y=1;y<=b.length;y++)d[x][y]=Math.min(d[x-1][y]+1,d[x][y-1]+1,d[x-1][y-1]+(a[x-1]==b[y-1]?0:1));
+  return d[a.length][b.length]}
+function isCorrect(alts,target){
+  // betul jika salah satu hasil pengecaman sama tepat dengan perkataan sasaran
+  for(var k=0;k<alts.length;k++){
+    var toks=alts[k].split(/\s+/).map(norm);
+    for(var j=0;j<toks.length;j++){if(toks[j]===target)return true}
+  }
+  return false;
+}
+function show(){
+  var q=W[i];
+  $("prog").textContent="Soalan "+(i+1)+" / "+W.length;
+  $("em").textContent=q.e;$("wd").textContent=q.w;$("sy").textContent=q.s;
+  $("fb").textContent="Tekan 🎤 dan sebut perkataan ini.";$("fb").className="fb";
+  tries=0;busy=false;$("mic").disabled=false;
+  setTimeout(function(){speak(q.w,0.8)},400);
+}
+function listen(){
+  if(busy)return;
+  var q=W[i];busy=true;
+  rec=new SR();rec.lang="ms-MY";rec.maxAlternatives=6;rec.interimResults=false;
+  var got=false;
+  $("mic").classList.add("rec");$("mic").textContent="🎙️ Mendengar...";
+  $("fb").textContent="";$("fb").className="fb";
+  rec.onresult=function(ev){
+    got=true;
+    var alts=[];for(var k=0;k<ev.results[0].length;k++)alts.push(ev.results[0][k].transcript);
+    var heard=alts[0];
+    if(isCorrect(alts,q.w))right();else wrong(heard);
+  };
+  rec.onerror=function(ev){
+    got=true;
+    var m=ev.error==="not-allowed"?"Sila benarkan akses mikrofon.":ev.error==="no-speech"?"Saya tidak dengar apa-apa. Cuba lagi!":"Ada masalah. Cuba lagi!";
+    $("fb").textContent=m;$("fb").className="fb bad";reset();
+  };
+  rec.onend=function(){if(!got){$("fb").textContent="Saya tidak dengar. Cuba lagi!";$("fb").className="fb bad";}reset()};
+  try{rec.start()}catch(e){reset()}
+}
+function reset(){busy=false;$("mic").classList.remove("rec");$("mic").textContent="🎤 Cakap"}
+function right(){
+  var pts=tries===0?10:5;score+=pts;$("score").textContent=score;
+  $("fb").textContent="✅ Betul! Hebat! +"+pts+" markah";$("fb").className="fb ok";
+  $("mic").disabled=true;busy=true;reset();
+  speak("Betul! Hebat!",1,function(){setTimeout(next,700)});
+}
+function wrong(heard){
+  tries++;var q=W[i];
+  $("fb").innerHTML="❌ Saya dengar “"+esc(heard)+"”. Dengar dan cuba lagi!";$("fb").className="fb bad";
+  reset();busy=true;$("mic").disabled=true;
+  speak("Hampir betul. Dengar baik-baik. "+q.w+". "+q.s.replace(/ - /g,". ")+". "+q.w+". Sekarang, cuba sebut semula.",0.7,function(){busy=false;$("mic").disabled=false});
+}
+function esc(s){return s.replace(/[&<>]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;"}[c]})}
+function next(){i++;if(i>=W.length)finish();else show()}
+function finish(){
+  $("s-play").classList.add("hide");$("s-end").classList.remove("hide");
+  $("cn").textContent=name;$("cs").textContent=score;
+  $("cd").textContent=new Date().toLocaleDateString("ms-MY",{day:"numeric",month:"long",year:"numeric"});
+  speak("Tahniah "+name+"! Anda telah mendapat sijil.",1);
+}
+$("go").onclick=function(){
+  if(!SR){$("warn").textContent="Pelayar ini tidak menyokong pengecaman suara. Sila buka dengan Google Chrome atau Microsoft Edge.";return}
+  name=$("nm").value.trim();if(!name){$("warn").textContent="Sila taip nama anda dahulu.";return}
+  i=0;score=0;$("score").textContent=0;
+  $("s-start").classList.add("hide");$("s-play").classList.remove("hide");show();
+};
+$("mic").onclick=listen;
+$("hear").onclick=function(){speak(W[i].w,0.7)};
+$("again").onclick=function(){$("s-end").classList.add("hide");$("s-start").classList.remove("hide")};
+if(!SR)$("warn").textContent="Petua: gunakan Google Chrome atau Microsoft Edge untuk pengecaman suara.";
+</script>
+</body>
+</html>
